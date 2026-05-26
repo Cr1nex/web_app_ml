@@ -1,0 +1,127 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #0f172a;
+  background: #f8fafc;
+  font-family: "Inter", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* ── Keyframes ─────────────────────────────────────────────────── */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(60px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(0)    scale(1);    }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(34,211,238,0);  }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes snake-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── Animation utilities ───────────────────────────────────────── */
+.animate-slide-in-right { animation: slideInRight 0.5s cubic-bezier(.22,1,.36,1) both; }
+.animate-fade-in-up     { animation: fadeInUp 0.6s ease both; }
+.animate-fade-in        { animation: fadeIn 0.5s ease both; }
+.animate-pulse-glow     { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-float          { animation: float 4s ease-in-out infinite; }
+
+/* ── Delay helpers ─────────────────────────────────────────────── */
+.delay-100  { animation-delay: 0.1s; }
+.delay-200  { animation-delay: 0.2s; }
+.delay-300  { animation-delay: 0.3s; }
+.delay-400  { animation-delay: 0.4s; }
+.delay-500  { animation-delay: 0.5s; }
+
+/* ── Panel / glass utilities ───────────────────────────────────── */
+.panel-shadow {
+  box-shadow: 0 30px 80px -40px rgba(15, 23, 42, 0.38);
+}
+.glass {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.soft-grid {
+  background-image:
+    linear-gradient(rgba(2,132,199,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(2,132,199,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Landing page background ───────────────────────────────────── */
+.landing-bg {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(16,185,129,0.22), transparent 45%),
+    radial-gradient(circle at 85% 25%, rgba(249,115,22,0.22),  transparent 40%),
+    linear-gradient(165deg, #f8fafc 0%, #ecfeff 50%, #fefce8 100%);
+}
+
+/* ── Hero (dark) ───────────────────────────────────────────────── */
+.hero-bg {
+  background: linear-gradient(135deg, #0a0f1e 0%, #0d1b2a 50%, #0a1628 100%);
+  position: relative;
+  overflow: hidden;
+}
+.hero-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(34,211,238,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(249,115,22,0.10) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* ── Skill card glow borders ───────────────────────────────────── */
+.skill-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.skill-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -12px rgba(34,211,238,0.25);
+}
+
+/* ── Game canvas wrapper ───────────────────────────────────────── */
+.game-canvas-wrap {
+  box-shadow: 0 0 40px rgba(34,211,238,0.15), 0 0 80px rgba(34,211,238,0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  display: inline-block;
+}
+
+/* ── Auth page background ──────────────────────────────────────── */
+.auth-bg {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(16,185,129,0.22), transparent 45%),
+    radial-gradient(circle at 85% 25%, rgba(249,115,22,0.22),  transparent 40%),
+    linear-gradient(165deg, #f8fafc 0%, #ecfeff 50%, #fefce8 100%);
+  min-height: 100vh;
+}
+
+/* ── Logged-in badge ───────────────────────────────────────────── */
+.logged-in-badge {
+  animation: slideInRight 0.55s cubic-bezier(.22,1,.36,1) both;
+}
