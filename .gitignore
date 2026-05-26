@@ -57,3 +57,5 @@ pnpm-debug.log*
 .cache/
 .tmp/
 tmp/
+data/
+mlruns/

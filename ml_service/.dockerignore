@@ -1,0 +1,28 @@
+# Data (mounted as volume, not baked into image)
+data/
+mlruns/
+mlflow.db
+artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.git/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Docker
+.dockerignore
+docker-compose.yml
+
+# Misc
+*.md
+.gitignore

@@ -1,0 +1,57 @@
+# Property Valuation MLOps Stack
+#
+# Services:
+#   mlflow  — shared tracking server + artifact proxy (port 5000)
+#   api     — prediction API, loads models from mlflow (port 5002)
+#
+# On the prod machine:
+#   docker compose up -d
+#
+# From your local PC, point at the prod server:
+#   export MLFLOW_TRACKING_URI=http://<prod-ip>:5000
+#   python -m src.services.train
+#   python -m src.services.registry promote --version N
+#   curl -X POST http://<prod-ip>:5002/api/v1/reload
+
+services:
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: src/deployment/Dockerfile
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      # Named volume — persists DB and artifacts across restarts.
+      # Do NOT bind-mount local mlflow.db or mlruns/ here; local artifact
+      # paths are Windows-absolute and won't resolve inside the container.
+      - mlflow_data:/app/mlflow
+      - mlflow_artifacts:/app/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: valuation-api
+    ports:
+      - "5002:5002"
+    environment:
+      # Connects to the mlflow service over the internal Docker network.
+      # Artifact downloads are proxied through HTTP — no shared filesystem needed.
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  mlflow_data:
+  mlflow_artifacts:
