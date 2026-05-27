@@ -3,8 +3,9 @@ import { clearAuth, getUsername } from "../types";
 import LoggedInBadge from "./LoggedInBadge";
 
 const NAV = [
-  { to: "/app",      label: "Overview" },
-  { to: "/app/game", label: "🎮 Game"  },
+  { to: "/app",         label: "Overview" },
+  { to: "/app/game",    label: "🎮 Game"  },
+  { to: "/app/predict", label: "📈 Predict" },
 ];
 
 export default function WorkspaceLayout() {

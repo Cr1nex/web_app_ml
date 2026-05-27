@@ -1,3 +1,4 @@
+import httpx
 import redis
 import uvicorn
 from fastapi import FastAPI
@@ -31,6 +32,7 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 @app.on_event("startup")
 async def startup():
 	app.state.redis = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+	app.state.http_client = httpx.AsyncClient(timeout=10.0)
 	app.state.rabbitmq_logger = RabbitMQLogger(settings.rabbitmq_url)
 	try:
 		await app.state.rabbitmq_logger.connect()
@@ -47,6 +49,9 @@ async def shutdown():
 	rabbit = getattr(app.state, "rabbitmq_logger", None)
 	if rabbit:
 		await rabbit.close()
+	http_client = getattr(app.state, "http_client", None)
+	if http_client:
+		await http_client.aclose()
 	redis_client = getattr(app.state, "redis", None)
 	if redis_client:
 		redis_client.close()
