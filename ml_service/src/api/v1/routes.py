@@ -10,11 +10,13 @@ Endpoints:
 """
 
 import logging
+from uuid import UUID
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 import src.api.v1.app as app_module
+from src.api.v1.deps import get_current_user_id
 from src.config import MODEL_NAME
 from src.configs.models.api_models import (
     PredictRequest,
@@ -38,7 +40,10 @@ async def health():
 
 
 @router.post("/predict", response_model=PredictResponse)
-async def predict(request: PredictRequest):
+async def predict(
+    request: PredictRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     """Predict property valuation from a single set of features."""
     if app_module.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -57,7 +62,10 @@ async def predict(request: PredictRequest):
 
 
 @router.post("/predict/batch", response_model=PredictResponse)
-async def predict_batch(request: BatchPredictRequest):
+async def predict_batch(
+    request: BatchPredictRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     """Batch predict property valuations from a list of feature dicts."""
     if app_module.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")

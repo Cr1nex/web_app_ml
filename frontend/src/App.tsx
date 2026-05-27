@@ -4,6 +4,7 @@ import AuthPage from "./components/AuthPage";
 import WorkspaceLayout from "./components/WorkspaceLayout";
 import WorkspaceHome from "./components/WorkspaceHome";
 import GamePage from "./components/GamePage";
+import PredictionPage from "./components/PredictionPage";
 import RequireAuth from "./components/RequireAuth";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
       >
         <Route index element={<WorkspaceHome />} />
         <Route path="game" element={<GamePage />} />
+        <Route path="predict" element={<PredictionPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

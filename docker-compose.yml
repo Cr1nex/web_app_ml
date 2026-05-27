@@ -49,6 +49,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_KEY_ID: backend-1
+      ML_SERVICE_URL: http://ml-service:5002
     depends_on:
       db:
         condition: service_healthy   # waits for pg_isready, not just container start
@@ -58,6 +59,48 @@ services:
         condition: service_started
     networks:
       - app-net
+
+  mlflow:
+    build:
+      context: ./ml_service
+      dockerfile: src/deployment/Dockerfile
+    container_name: hw2-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/app/mlflow
+      - mlflow-artifacts:/app/artifacts
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  ml-service:
+    build:
+      context: ./ml_service
+    container_name: hw2-ml-service
+    ports:
+      - "5002:5002"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      ML_AUTH_REDIS_URL: redis://redis:6379/0
+      ML_AUTH_JWT_ISSUER: backend
+      ML_AUTH_JWT_AUDIENCE: backend-users
+      ML_AUTH_JWT_REDIS_PREFIX: jwt:keys
+      ML_AUTH_ENABLE_AUTH: "true"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app-net
+    restart: on-failure
 
   frontend:
     build:
@@ -83,6 +126,8 @@ services:
 
 volumes:
   db-data:
+  mlflow-data:
+  mlflow-artifacts:
 
 networks:
   app-net:

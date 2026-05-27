@@ -22,12 +22,14 @@ from contextlib import asynccontextmanager
 
 import mlflow
 import mlflow.pyfunc
+import redis
 import uvicorn
 from fastapi import FastAPI
 from mlflow import MlflowClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from src.config import MLFLOW_TRACKING_URI, MODEL_NAME
+from src.configs.security import security_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s — %(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -81,7 +83,12 @@ def load_production_model():
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Load model on startup, cleanup on shutdown."""
+    """Load model + open Redis on startup, cleanup on shutdown."""
+    application.state.redis = redis.Redis.from_url(
+        security_config.redis_url, decode_responses=True
+    )
+    logger.info(f"Connected to Redis at: {security_config.redis_url}")
+
     try:
         load_production_model()
         logger.info("Model loaded — API ready")
@@ -94,6 +101,9 @@ async def lifespan(application: FastAPI):
         )
     yield
     logger.info("Shutting down API")
+    redis_client = getattr(application.state, "redis", None)
+    if redis_client is not None:
+        redis_client.close()
 
 
 app = FastAPI(

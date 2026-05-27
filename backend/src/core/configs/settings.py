@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://redis:6379/0"
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672/"
+    ml_service_url: str = "http://ml-service:5002"
 
     jwt_issuer: str = "backend"
     jwt_audience: str = "backend-users"

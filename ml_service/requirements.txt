@@ -28,6 +28,11 @@ uvicorn>=0.29
 pydantic>=2.6
 pydantic-settings>=2.0
 
+# === Auth (JWT verification against backend's Redis JWKS) ===
+pyjwt[crypto]>=2.8
+redis>=5
+cryptography>=42
+
 # === Workflow Orchestration ===
 apache-airflow>=2.9
 
