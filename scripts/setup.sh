@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — Install all dependencies needed to run hw2 (Docker Compose + Kubernetes/Kind)
+# setup.sh — Install all dependencies needed to run webml (Docker Compose + Kubernetes/Kind)
 # Run from the project root: bash scripts/setup.sh
 
 set -euo pipefail
@@ -10,7 +10,7 @@ installing(){ echo "  [>>]  $*"; }
 err()      { echo "  [!!]  $*" >&2; exit 1; }
 
 echo ""
-echo "hw2 dependency setup"
+echo "webml dependency setup"
 echo ""
 
 # ── Docker ────────────────────────────────────────────────────────────────────
@@ -64,5 +64,5 @@ echo ""
 echo "All dependencies satisfied. You can now run:"
 echo ""
 echo "  Docker Compose:   docker compose up -d --build"
-echo "  Kubernetes:       kind create cluster --name hw2 --config k8s/kind-config.yaml"
+echo "  Kubernetes:       kind create cluster --name webml --config k8s/kind-config.yaml"
 echo ""

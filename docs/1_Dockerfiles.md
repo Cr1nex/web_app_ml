@@ -93,12 +93,12 @@ The final image ships with **no Node.js, no source code, no node_modules** — o
 
 | Image | Container port | Role |
 |-------|---------------|------|
-| `hw2/backend` | `8000` | Uvicorn / FastAPI |
-| `hw2/frontend` | `80` | Nginx static server |
+| `webml/backend` | `8000` | Uvicorn / FastAPI |
+| `webml/frontend` | `80` | Nginx static server |
 
 ## Build Commands
 
 ```bash
-docker build -t hw2/backend:latest  ./backend
-docker build -t hw2/frontend:latest ./frontend
+docker build -t webml/backend:latest  ./backend
+docker build -t webml/frontend:latest ./frontend
 ```

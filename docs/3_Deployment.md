@@ -94,7 +94,7 @@ NetworkPolicy: backend pods only accept traffic from nginx-gateway pods.
 ### Step 1 — Create Cluster
 
 ```bash
-kind create cluster --name hw2 --config k8s/kind-config.yaml
+kind create cluster --name webml --config k8s/kind-config.yaml
 ```
 
 ### Step 2 — Build Images
@@ -102,23 +102,23 @@ kind create cluster --name hw2 --config k8s/kind-config.yaml
 ```bash
 # PowerShell
 $env:DOCKER_BUILDKIT = "0"
-docker build -t hw2/backend:latest  ./backend
-docker build -t hw2/frontend:latest ./frontend
+docker build -t webml/backend:latest  ./backend
+docker build -t webml/frontend:latest ./frontend
 ```
 
 ### Step 3 — Load Images into Kind
 
 ```bash
-kind load docker-image --name hw2 hw2/backend:latest
-kind load docker-image --name hw2 hw2/frontend:latest
+kind load docker-image --name webml webml/backend:latest
+kind load docker-image --name webml webml/frontend:latest
 ```
 
 If `kind load` fails on Windows, use the manual tar method:
 
 ```powershell
-docker save hw2/backend:latest  -o backend.tar
-docker save hw2/frontend:latest -o frontend.tar
-foreach ($node in "hw2-control-plane","hw2-worker","hw2-worker2") {
+docker save webml/backend:latest  -o backend.tar
+docker save webml/frontend:latest -o frontend.tar
+foreach ($node in "webml-control-plane","webml-worker","webml-worker2") {
     docker cp backend.tar  "${node}:/backend.tar"
     docker exec $node ctr --namespace k8s.io images import /backend.tar
     docker cp frontend.tar "${node}:/frontend.tar"
@@ -133,13 +133,13 @@ Remove-Item backend.tar, frontend.tar
 kubectl apply -k k8s/
 
 # Wait for backend (init container runs migrations automatically)
-kubectl -n hw2 rollout status deployment/backend
+kubectl -n webml rollout status deployment/backend
 ```
 
 ### Step 5 — Verify
 
 ```bash
-kubectl get pods -n hw2
+kubectl get pods -n webml
 curl -s http://localhost:8080/health
 ```
 
@@ -147,31 +147,31 @@ curl -s http://localhost:8080/health
 
 ```bash
 # Logs
-kubectl logs -n hw2 -l app=backend --follow
-kubectl logs -n hw2 -l app=backend -c migrate   # init container (migrations)
+kubectl logs -n webml -l app=backend --follow
+kubectl logs -n webml -l app=backend -c migrate   # init container (migrations)
 
 # Shell into backend pod
-kubectl exec -it -n hw2 deployment/backend -- bash
+kubectl exec -it -n webml deployment/backend -- bash
 
 # Temporary port-forward to inspect databases
-kubectl port-forward -n hw2 svc/postgres  5432:5432
-kubectl port-forward -n hw2 svc/redis     6379:6379
-kubectl port-forward -n hw2 svc/rabbitmq  15672:15672
+kubectl port-forward -n webml svc/postgres  5432:5432
+kubectl port-forward -n webml svc/redis     6379:6379
+kubectl port-forward -n webml svc/rabbitmq  15672:15672
 ```
 
 ### After Code Changes
 
 ```bash
-docker build -t hw2/backend:latest  ./backend
-docker build -t hw2/frontend:latest ./frontend
-kind load docker-image --name hw2 hw2/backend:latest hw2/frontend:latest
-kubectl rollout restart deployment/backend deployment/frontend -n hw2
+docker build -t webml/backend:latest  ./backend
+docker build -t webml/frontend:latest ./frontend
+kind load docker-image --name webml webml/backend:latest webml/frontend:latest
+kubectl rollout restart deployment/backend deployment/frontend -n webml
 ```
 
 ### Tear Down
 
 ```bash
-kind delete cluster --name hw2
+kind delete cluster --name webml
 ```
 
 ---

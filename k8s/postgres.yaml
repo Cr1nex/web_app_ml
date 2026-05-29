@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
-  namespace: hw2
+  namespace: webml
 spec:
   accessModes:
     - ReadWriteOnce
@@ -10,11 +10,31 @@ spec:
     requests:
       storage: 10Gi
 ---
+# Mounted into /docker-entrypoint-initdb.d/ — Postgres runs the script
+# exactly once, when the data volume is first initialised. It creates the
+# `mlflow` database alongside `appdb` so the MLflow tracking server has a
+# place to keep run metadata. Idempotent (uses pg_database guard) so a
+# stale re-run is safe.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: webml
+data:
+  01-create-mlflow-db.sh: |
+    #!/bin/sh
+    set -eu
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'EOSQL'
+    SELECT 'CREATE DATABASE mlflow OWNER appuser'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mlflow')
+    \gexec
+    EOSQL
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: hw2
+  namespace: webml
   labels:
     app: postgres
 spec:
@@ -42,16 +62,23 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: postgres-initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
       volumes:
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-data
+        - name: postgres-initdb
+          configMap:
+            name: postgres-initdb
+            defaultMode: 0o755
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: hw2
+  namespace: webml
 spec:
   type: ClusterIP
   selector:

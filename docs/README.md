@@ -29,19 +29,21 @@ you can just docker-compose up -d --build for easy test
 ![alt text](<Screenshot 2026-05-18 125704.png>)
 ## Run it (Docker Compose)
 
-```bash
-docker compose up --build
-```
+The compose stack now bundles the ML lifecycle alongside the web app: Postgres, Redis, RabbitMQ, backend, frontend, NGINX, **MLflow tracking server (Postgres-backed)**, and the **ml-service** prediction API. Everything builds + comes up with a single command — migrations + the postgres `mlflow` database init script + JWKS bootstrap all run automatically:
 
-Migrations run automatically on startup — no extra step needed.
+```bash
+docker compose up -d --build
+```
 
 | URL | What |
 |-----|------|
-| http://localhost:8080 | App (portfolio + auth) |
-| http://localhost:8080/api/docs | Swagger UI |
+| http://localhost:8080 | App (portfolio + auth + property valuation) |
+| http://localhost:8080/api/docs | Backend Swagger UI |
+| http://localhost:5000 | MLflow tracking UI + Model Registry |
+| http://localhost:5002/docs | Prediction API Swagger |
 | http://localhost:15672 | RabbitMQ UI (guest / guest) |
 
-Stop and wipe data:
+Stop and wipe state (including the `mlflow` DB and artifact volume):
 
 ```bash
 docker compose down -v
@@ -53,63 +55,73 @@ docker compose down -v
 
 > Stop Compose first: `docker compose down`
 
-**1. Create the cluster**
-```powershell
-kind create cluster --config k8s/kind-config.yaml --name hw2
+A `Makefile` at the repo root wraps the whole flow — building the four images, loading them into Kind, applying the Kustomize tree, and waiting for every Deployment to be Ready:
+
+```bash
+# One-time — installs kubectl + kind if missing (uses sudo on Linux/macOS)
+make tools
+
+# Create cluster + build + load + apply + rollout (≈3-5 min cold)
+make kind-up
+
+# Port-forward the gateway to your laptop
+make fwd
+#   → http://127.0.0.1:8080
 ```
 
-**2. Build images**
-```powershell
-$env:DOCKER_BUILDKIT = "0"
-docker build -t hw2/backend:latest ./backend
-docker build -t hw2/frontend:latest ./frontend
-```
+What `kind-up` does under the hood, for reference:
 
-**3. Load images into the cluster**
-```powershell
-docker save hw2/backend:latest -o backend.tar
-docker save hw2/frontend:latest -o frontend.tar
-foreach ($node in "hw2-control-plane","hw2-worker","hw2-worker2") {
-    docker cp backend.tar "${node}:/backend.tar"
-    docker exec $node ctr --namespace k8s.io images import /backend.tar
-    docker cp frontend.tar "${node}:/frontend.tar"
-    docker exec $node ctr --namespace k8s.io images import /frontend.tar
-}
-Remove-Item backend.tar, frontend.tar
-```
+| Step | Command |
+|---|---|
+| Cluster | `kind create cluster --name webml --config k8s/kind-config.yaml` |
+| Images | `docker build` for `backend`, `frontend`, `mlflow`, `ml-service` |
+| Load   | `kind load docker-image --name webml …` |
+| Apply  | `kubectl apply -k k8s/` |
+| Wait   | `kubectl -n webml rollout status deployment/…` |
 
-**4. Deploy**
-```powershell
-kubectl apply -k k8s/
-```
+After editing code, do an inner-loop rebuild + rollout in one shot:
 
-Migrations run automatically before the backend starts. App is at **http://localhost:8080**
-
-After code changes, repeat steps 2–3 then:
-```powershell
-kubectl rollout restart deployment/backend deployment/frontend -n hw2
+```bash
+make kind-reload                                 # all four images
+make image-mlflow && kubectl -n webml rollout restart deployment/mlflow   # just one
 ```
 
 Tear down:
-```powershell
-kind delete cluster --name hw2
+
+```bash
+make kind-down
 ```
+
+### Train + deploy a model into the running cluster
+
+`scripts/train_and_deploy.py` (cross-platform, no shell-isms) opens a port-forward to MLflow, trains, promotes the new version to `@champion`, and hot-reloads the ml-service pods:
+
+```bash
+make deploy-model                                # train + promote latest + hot-reload
+make deploy-model ARGS="--skip-train"            # promote latest existing version + reload
+make deploy-model ARGS="--version 3 --restart"   # pick a specific version, use rollout-restart
+```
+
+The raw CT real-estate CSV must be in `ml_service/data/raw/` first — see `ml_service/README.md` § *Get the Dataset*.
 
 ---
 
-## Inspect the databases
+## Inspect the databases / MLflow
 
 Run each in a separate terminal, then connect with any local client:
 
-```powershell
+```bash
 # Postgres — connect with psql or any DB client at localhost:5432
-kubectl port-forward -n hw2 svc/postgres 5432:5432
+kubectl port-forward -n webml svc/postgres 5432:5432
 
 # Redis — connect with redis-cli or RedisInsight at localhost:6379
-kubectl port-forward -n hw2 svc/redis 6379:6379
+kubectl port-forward -n webml svc/redis 6379:6379
 
 # RabbitMQ management UI — open http://localhost:15672 (guest / guest)
-kubectl port-forward -n hw2 svc/rabbitmq 15672:15672
+kubectl port-forward -n webml svc/rabbitmq 15672:15672
+
+# MLflow UI + Model Registry — open http://localhost:5000
+kubectl port-forward -n webml svc/mlflow 5000:5000
 ```
 
 ---
@@ -123,7 +135,8 @@ kubectl port-forward -n hw2 svc/rabbitmq 15672:15672
 | GET | `/health` | — | Health check |
 | POST | `/api/v1/auth/register` | — | Create account |
 | POST | `/api/v1/auth/login` | — | Login, returns JWT pair |
-| POST | `/api/v1/auth/refresh` | Refresh token | Rotate refresh token |
+| POST | `/api/v1/auth/refresh` | Refresh cookie (or body) | Rotate refresh token |
+| GET  | `/api/v1/auth/check` | Access cookie | 200 if session valid, 401 otherwise |
 | GET | `/api/v1/auth/jwks` | — | Public JWKS keys |
 
 ### Game
@@ -132,6 +145,13 @@ kubectl port-forward -n hw2 svc/rabbitmq 15672:15672
 |--------|------|------|-------------|
 | POST | `/api/v1/game/scores` | Bearer JWT | Save a Snake game score |
 | GET | `/api/v1/game/scores/leaderboard` | — | Top scores (public) |
+
+### Property valuation (ML)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/prediction/predict` | Bearer JWT | Single-transaction sale-price estimate |
+| POST | `/api/v1/prediction/predict/batch` | Bearer JWT | Batch predictions |
 
 Quick test:
 ```bash

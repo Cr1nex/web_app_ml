@@ -38,9 +38,19 @@ curl -L -o data/raw/Real_Estate_Sales_2001-2021_GL.csv "https://data.ct.gov/api/
 
 ### 3. Run Locally (Without Docker)
 
+> **Backend store note.** The local-only path below uses **SQLite** for
+> simplicity. The Dockerised root stack instead uses the **Postgres**
+> service already running for the web app — see section 4. Both work; pick
+> the one that matches what's actually up.
+
 **Step 1 — Start MLflow tracking server:**
 ```bash
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts --host 0.0.0.0 --port 5000
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --default-artifact-root mlflow-artifacts:/ \
+  --artifacts-destination ./artifacts \
+  --serve-artifacts \
+  --host 0.0.0.0 --port 5000
 ```
 
 **Step 2 — Build feature matrix** (open a new terminal):
@@ -227,9 +237,31 @@ term/
 ├── Dockerfile                         # API container
 ├── docker-compose.yml                 # Multi-service deployment
 ├── requirements.txt
+├── tests/
+│   ├── conftest.py                    # Synthetic transactions + fitted xgb fixture
+│   ├── test_features.py               # Pipeline contract + chronological split
+│   ├── test_inference.py              # CategoricalTreeModel wrapper
+│   ├── test_api.py                    # FastAPI route smoke tests
+│   └── test_train_roundtrip.py        # Log → reload → predict against tmp MLflow
+├── pytest.ini
+├── requirements.txt
+├── requirements-dev.txt               # pytest + httpx for the test suite
 ├── README.md
 └── .gitignore
 ```
+
+---
+
+## Running the test suite
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                                  # 12 tests, ~8 s, no MLflow server needed
+```
+
+The suite uses synthetic in-memory data and an isolated SQLite tracking
+store, so it stays hermetic and fast — no Postgres, no Docker, no raw CSV
+download required.
 
 ---
 
