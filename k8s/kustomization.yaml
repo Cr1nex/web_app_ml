@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: hw2
+namespace: webml
 resources:
   - namespace.yaml
   - postgres.yaml
@@ -9,4 +9,6 @@ resources:
   - backend.yaml
   - frontend.yaml
   - gateway.yaml
+  - mlflow.yaml
+  - ml-service.yaml
   - networkpolicies.yaml

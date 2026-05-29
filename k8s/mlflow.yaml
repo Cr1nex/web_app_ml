@@ -1,0 +1,85 @@
+# MLflow tracking server — backend store in the shared Postgres `mlflow`
+# database, artifacts on a dedicated PVC. Exposes the HTTP artifact proxy
+# (`--serve-artifacts` + `mlflow-artifacts:/` URI) so clients never need
+# direct filesystem access to the artifact root.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: webml
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: webml
+  labels:
+    app: mlflow
+spec:
+  # ReadWriteOnce PVC → single writer. Don't bump this.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      containers:
+        - name: mlflow
+          image: webml/mlflow:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MLFLOW_BACKEND_STORE_URI
+              value: postgresql+psycopg2://appuser:apppassword@postgres:5432/mlflow
+            - name: MLFLOW_ARTIFACTS_DESTINATION
+              value: /app/artifacts
+            # DNS-rebinding protection (MLflow 3.x). Allow in-cluster Service
+            # name, port-forward localhost, and the embedded healthcheck.
+            - name: MLFLOW_SERVER_ALLOWED_HOSTS
+              value: "mlflow,mlflow:*,mlflow.webml.svc.cluster.local,mlflow.webml.svc.cluster.local:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*"
+          volumeMounts:
+            - name: artifacts
+              mountPath: /app/artifacts
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: webml
+spec:
+  type: ClusterIP
+  selector:
+    app: mlflow
+  ports:
+    - name: http
+      protocol: TCP
+      port: 5000
+      targetPort: 5000

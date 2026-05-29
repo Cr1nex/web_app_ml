@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: hw2
+  namespace: webml
   labels:
     app: frontend
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: hw2/frontend:latest
+          image: webml/frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
@@ -38,7 +38,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: hw2
+  namespace: webml
 spec:
   type: ClusterIP
   selector:

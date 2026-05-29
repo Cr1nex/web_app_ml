@@ -1,4 +1,4 @@
-# setup.ps1 — Install all dependencies needed to run hw2 (Docker Compose + Kubernetes/Kind)
+# setup.ps1 — Install all dependencies needed to run webml (Docker Compose + Kubernetes/Kind)
 # Run from the project root: .\scripts\setup.ps1
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ function Write-OK($msg)   { Write-Host "  [OK]  $msg" -ForegroundColor Green }
 function Write-Skip($msg) { Write-Host "  [--]  $msg" -ForegroundColor Yellow }
 function Write-Installing($msg) { Write-Host "  [>>]  $msg" -ForegroundColor Cyan }
 
-Write-Host "`nhw2 dependency setup`n" -ForegroundColor White
+Write-Host "`nwebml dependency setup`n" -ForegroundColor White
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 if (Test-Command "docker") {
@@ -71,4 +71,4 @@ if (Test-Command "kind") {
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host "`nAll dependencies satisfied. You can now run:`n" -ForegroundColor Green
 Write-Host "  Docker Compose:   docker compose up -d --build"
-Write-Host "  Kubernetes:       kind create cluster --name hw2 --config k8s/kind-config.yaml`n"
+Write-Host "  Kubernetes:       kind create cluster --name webml --config k8s/kind-config.yaml`n"

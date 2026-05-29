@@ -57,10 +57,10 @@ The `app` service has no fixed host port, so multiple containers start without c
 
 ```bash
 # Scale backend to 5 replicas
-kubectl scale deployment backend --replicas=5 -n hw2
+kubectl scale deployment backend --replicas=5 -n webml
 
 # Scale frontend
-kubectl scale deployment frontend --replicas=3 -n hw2
+kubectl scale deployment frontend --replicas=3 -n webml
 ```
 
 Kubernetes only routes traffic to **Ready** pods (readiness probe `GET /health` must pass). New replicas run the init container (migrations) then enter the load-balanced Endpoints list automatically.
@@ -69,10 +69,10 @@ Kubernetes only routes traffic to **Ready** pods (readiness probe `GET /health` 
 
 ```bash
 # Autoscale between 2–10 replicas at 60% CPU target
-kubectl autoscale deployment backend --min=2 --max=10 --cpu-percent=60 -n hw2
+kubectl autoscale deployment backend --min=2 --max=10 --cpu-percent=60 -n webml
 
 # Check status
-kubectl get hpa -n hw2
+kubectl get hpa -n webml
 ```
 
 Requires the Metrics Server in the cluster.
@@ -80,8 +80,8 @@ Requires the Metrics Server in the cluster.
 ### Zero-Downtime Rollouts
 
 ```bash
-kubectl rollout restart deployment/backend -n hw2   # rolling update
-kubectl rollout undo    deployment/backend -n hw2   # rollback if broken
+kubectl rollout restart deployment/backend -n webml   # rolling update
+kubectl rollout undo    deployment/backend -n webml   # rollback if broken
 ```
 
 New pods come up and pass readiness probes before old pods are terminated — no gap in availability.

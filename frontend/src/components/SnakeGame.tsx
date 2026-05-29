@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isAuthenticated } from "../types";
+import { apiFetch } from "../lib/api";
 
 const GRID = 20, CELL = 20, SZ = GRID * CELL;
 type Pt = { x: number; y: number };
@@ -57,9 +58,8 @@ export default function SnakeGame({ onPlayAgain }: { onPlayAgain?: () => void } 
     // Only POST if logged in — cookies sent automatically via credentials:"include"
     if (isAuthenticated() && finalScore > 0) {
       try {
-        const r = await fetch("/api/v1/game/scores", {
+        const r = await apiFetch("/api/v1/game/scores", {
           method: "POST",
-          credentials: "include",           // ← HttpOnly cookie sent automatically
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ score: finalScore, game_name: "snake" }),
         });

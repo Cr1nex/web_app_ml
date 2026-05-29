@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: hw2-db
+    container_name: webml-db
     environment:
       POSTGRES_DB: appdb
       POSTGRES_USER: appuser
@@ -10,6 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+      # Runs once on first volume init: creates the `mlflow` database alongside `appdb`.
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - app-net
     healthcheck:
@@ -21,13 +23,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: hw2-redis
+    container_name: webml-redis
     networks:
       - app-net
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: hw2-rabbitmq
+    container_name: webml-rabbitmq
     ports:
       - "15672:15672"
     networks:
@@ -36,7 +38,7 @@ services:
   app:
     build:
       context: ./backend
-    container_name: hw2-backend
+    container_name: webml-backend
     # Run migrations then start the server — no manual exec needed
     command: >
       sh -c "alembic upgrade head && uvicorn api.app:app --host 0.0.0.0 --port 8000"
@@ -64,12 +66,23 @@ services:
     build:
       context: ./ml_service
       dockerfile: src/deployment/Dockerfile
-    container_name: hw2-mlflow
+    container_name: webml-mlflow
     ports:
       - "5000:5000"
+    environment:
+      # Backend store lives in the existing postgres container (separate `mlflow` DB).
+      # Artifacts still live on the local volume; clients reach them via the HTTP proxy.
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://appuser:apppassword@db:5432/mlflow
+      MLFLOW_ARTIFACTS_DESTINATION: /app/artifacts
+      # MLflow 3.x DNS-rebinding protection: matcher is exact-string OR fnmatch
+      # glob, and the Host header includes the port (e.g. "mlflow:5000").
+      # Use ":*" to cover any port, matching MLflow's own default for localhost.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow,mlflow:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*"
     volumes:
-      - mlflow-data:/app/mlflow
       - mlflow-artifacts:/app/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - app-net
     healthcheck:
@@ -83,7 +96,7 @@ services:
   ml-service:
     build:
       context: ./ml_service
-    container_name: hw2-ml-service
+    container_name: webml-ml-service
     ports:
       - "5002:5002"
     environment:
@@ -105,7 +118,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: hw2-frontend
+    container_name: webml-frontend
     networks:
       - app-net
     depends_on:
@@ -113,7 +126,7 @@ services:
 
   gateway:
     image: nginx:1.27-alpine
-    container_name: hw2-gateway
+    container_name: webml-gateway
     ports:
       - "8080:80"
     volumes:
@@ -126,10 +139,9 @@ services:
 
 volumes:
   db-data:
-  mlflow-data:
   mlflow-artifacts:
 
 networks:
   app-net:
-    name: hw2-app-net
+    name: webml-app-net
     driver: bridge

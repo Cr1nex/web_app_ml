@@ -60,7 +60,7 @@ export async function clearAuth(): Promise<void> {
 }
 
 /**
- * @deprecated Tokens are now HttpOnly cookies — JS cannot read the raw token.
+ * @deprecated Tokens live in HttpOnly cookies — JS can't read them.
  * Use isAuthenticated() to gate UI; rely on credentials:"include" for API calls.
  */
 export function getToken(): null {

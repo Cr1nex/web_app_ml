@@ -38,14 +38,24 @@ curl -L -o data/raw/Real_Estate_Sales_2001-2021_GL.csv "https://data.ct.gov/api/
 
 ### 3. Run Locally (Without Docker)
 
+> **Backend store note.** The local-only path below uses **SQLite** for
+> simplicity. The Dockerised root stack instead uses the **Postgres**
+> service already running for the web app — see section 4. Both work; pick
+> the one that matches what's actually up.
+
 **Step 1 — Start MLflow tracking server:**
 ```bash
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./artifacts --host 0.0.0.0 --port 5000
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --default-artifact-root mlflow-artifacts:/ \
+  --artifacts-destination ./artifacts \
+  --serve-artifacts \
+  --host 0.0.0.0 --port 5000
 ```
 
 **Step 2 — Build feature matrix** (open a new terminal):
 ```bash
-python -m src.data.features
+python -m src.data.transaction_features
 ```
 
 **Step 3 — Train baseline model:**
@@ -86,22 +96,104 @@ python -m src.deployment.monitor --no-api --n-batches 10
 
 ### 4. Run with Docker
 
+There are two compose files:
+
+| File | Use it when | MLflow backend store |
+|---|---|---|
+| `docker-compose.yml` (repo root) | Running the **full app + MLflow stack** together | Postgres (the existing `db` service) |
+| `ml_service/docker-compose.yml` | Running **only** the ML service in isolation | SQLite (inside the container) |
+
+Full-stack (recommended):
 ```bash
-# Build and start all services
-docker-compose up --build -d
-
-# Check status
-docker-compose ps
-
-# View MLflow UI
-# Open http://localhost:5000
-
-# View API docs
-# Open http://localhost:5002/docs
-
-# Stop everything
-docker-compose down
+# From repo root
+docker compose up --build -d
+docker compose ps
+# MLflow UI:   http://localhost:5000
+# API docs:    http://localhost:5002/docs
+# Web app:     http://localhost:8080
 ```
+
+The first time the `db` volume is created, the init script in
+`scripts/postgres-init/` automatically creates a separate `mlflow` database
+inside the existing Postgres container, so MLflow metadata stays out of the
+application schema.
+
+If you already have a populated `db-data` volume from before this change,
+the init script won't re-run. Create the database once by hand:
+```bash
+docker compose exec db psql -U appuser -d appdb -c "CREATE DATABASE mlflow OWNER appuser;"
+docker compose restart mlflow
+```
+
+Stand-alone ML-only stack (no app, sqlite store):
+```bash
+cd ml_service
+docker compose up --build -d
+```
+
+---
+
+### 5. Train and push a model into the running Docker stack
+
+`docker compose up -d` starts two containers: `mlflow-server` (the tracking
+server + registry, port 5000) and `valuation-api` (the prediction API, port
+5002, which loads its model over HTTP from `mlflow-server`). The MLflow data
+lives in named volumes (`mlflow_data`, `mlflow_artifacts`), so models survive
+container restarts and don't need to be baked into the image.
+
+**Workflow** — train locally, register through the container's MLflow API,
+then tell the prediction container to hot-reload:
+
+```bash
+# 1. Bring up the stack (one-time)
+cd ml_service
+docker compose up -d
+
+# 2. Point your local Python at the containerised MLflow server
+export MLFLOW_TRACKING_URI=http://localhost:5000
+
+# 3. Build the feature parquet (cached under data/processed/)
+python -m src.data.transaction_features
+
+# 4. Train + auto-register as @staging
+python -m src.services.train --cv
+#   ↳ logs run to MLflow, registers a new version of PropertyValuationModel,
+#     sets alias @staging on it.
+
+# 5. (Optional) tune and let the best run register itself
+python -m src.services.tune --max-evals 20
+
+# 6. List versions, decide which one to promote
+python -m src.services.registry list
+
+# 7. Promote a version to @champion
+python -m src.services.registry promote --version N
+
+# 8. Hot-swap the model inside the running API container — no restart
+curl -X POST http://localhost:5002/api/v1/reload
+#   ↳ valuation-api re-runs load_production_model() against
+#     @champion → @staging → latest and atomically swaps the global handle.
+```
+
+**Why this works without rebuilding the image**
+
+- `mlflow-server` accepts any client (local Python, another container, the
+  Airflow worker) that hits `http://mlflow:5000` from inside the network or
+  `http://localhost:5000` from the host. Registering a model writes to the
+  `mlflow_data` volume; artifacts go to `mlflow_artifacts`.
+- `valuation-api` loads the model via `mlflow.pyfunc.load_model("models:/…@champion")`.
+  That call streams the artifact over HTTP from `mlflow-server`, so the API
+  container never needs the artifact on disk.
+- `POST /api/v1/reload` is the only step that actually swaps the model. If
+  the alias hasn't been moved, reload is a no-op.
+
+**Troubleshooting**
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `RuntimeError: Cannot reach MLflow` at API startup | `mlflow-server` not healthy yet | `docker compose logs mlflow` and wait for the health check |
+| `No registered versions found for 'PropertyValuationModel'` | Trained against a different tracking URI | Re-run training with `MLFLOW_TRACKING_URI=http://localhost:5000` |
+| Reload returns 503 | Alias not set or run artifact missing | `python -m src.services.registry list` and re-promote |
 
 ---
 
@@ -133,7 +225,7 @@ term/
 │   │       ├── app.py                 # FastAPI application
 │   │       └── routes.py              # API route handlers
 │   ├── data/
-│   │   └── features.py                # Feature engineering pipeline
+│   │   └── transaction_features.py    # Per-transaction feature pipeline
 │   ├── services/
 │   │   ├── model.py                   # Model factories & evaluation
 │   │   ├── train.py                   # Training with MLflow tracking
@@ -145,9 +237,31 @@ term/
 ├── Dockerfile                         # API container
 ├── docker-compose.yml                 # Multi-service deployment
 ├── requirements.txt
+├── tests/
+│   ├── conftest.py                    # Synthetic transactions + fitted xgb fixture
+│   ├── test_features.py               # Pipeline contract + chronological split
+│   ├── test_inference.py              # CategoricalTreeModel wrapper
+│   ├── test_api.py                    # FastAPI route smoke tests
+│   └── test_train_roundtrip.py        # Log → reload → predict against tmp MLflow
+├── pytest.ini
+├── requirements.txt
+├── requirements-dev.txt               # pytest + httpx for the test suite
 ├── README.md
 └── .gitignore
 ```
+
+---
+
+## Running the test suite
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                                  # 12 tests, ~8 s, no MLflow server needed
+```
+
+The suite uses synthetic in-memory data and an isolated SQLite tracking
+store, so it stays hermetic and fast — no Postgres, no Docker, no raw CSV
+download required.
 
 ---
 
@@ -179,23 +293,12 @@ curl -X POST http://localhost:5002/api/v1/predict \
   -H "Content-Type: application/json" \
   -d '{
     "features": {
-      "year": 2020, "month": 6, "quarter": 2,
-      "transaction_count": 45,
-      "median_assessed_value": 150000,
-      "median_sale_price_lag_1": 250000,
-      "median_sale_price_lag_3": 245000,
-      "median_sale_price_lag_6": 240000,
-      "median_sale_price_lag_12": 230000,
-      "median_sale_price_rolling_mean_3": 248000,
-      "median_sale_price_rolling_std_3": 5000,
-      "median_sale_price_rolling_mean_6": 246000,
-      "median_sale_price_rolling_std_6": 6000,
-      "median_sale_price_rolling_mean_12": 242000,
-      "median_sale_price_rolling_std_12": 7000,
-      "price_pct_change_1m": 0.02,
-      "price_pct_change_3m": 0.05,
-      "price_pct_change_12m": 0.08,
-      "median_sales_ratio": 0.92
+      "town": "Avon",
+      "property_type": "Residential",
+      "residential_type": "Single Family",
+      "assessed_value": 217640,
+      "list_year": 2020,
+      "month_recorded": 9
     }
   }'
 ```
@@ -232,8 +335,9 @@ Airflow UI: http://localhost:8080
 
 ## Key Design Decisions
 
-1. **Chronological splitting** — Train on 2001–2017, validate on 2018–2019, test on 2020+. No random shuffling to prevent temporal data leakage.
-2. **Per-town features** — Lag and rolling features computed per town to avoid cross-location leakage.
-3. **Pydantic configs** — All configuration is type-validated via Pydantic models under `src/configs/`.
-4. **MLflow aliases** — Uses `@champion` / `@staging` aliases (MLflow 2.x) instead of deprecated stage transitions.
-5. **KS-test drift detection** — Kolmogorov-Smirnov test on feature distributions to detect market shifts.
+1. **Per-transaction regression** — Each training row is one real-estate transaction; the target is the realised sale price. The model takes the six fields a frontend user actually knows (town, property type, residential type, assessed value, list year, month) and returns a dollar estimate.
+2. **Chronological splitting** — Splits are by `Date Recorded`, not random, so train/val/test never overlap in time.
+3. **Native categorical handling** — `town`, `property_type` and `residential_type` are passed as pandas `category` dtype straight into XGBoost (`enable_categorical=True`, `tree_method="hist"`) or LightGBM (`categorical_feature=…`) — no one-hot blow-up.
+4. **Pydantic configs** — All configuration is type-validated via Pydantic models under `src/configs/`.
+5. **MLflow aliases** — Uses `@champion` / `@staging` aliases (MLflow 2.x) instead of deprecated stage transitions.
+6. **KS-test drift detection** — Kolmogorov-Smirnov test on feature distributions to detect market shifts.

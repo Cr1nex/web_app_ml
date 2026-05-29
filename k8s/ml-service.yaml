@@ -1,0 +1,67 @@
+# Prediction API. Stateless — scales horizontally. Loads its model from
+# the MLflow registry over HTTP at startup and rotates via POST /reload.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: webml
+  labels:
+    app: ml-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ml-service
+  template:
+    metadata:
+      labels:
+        app: ml-service
+    spec:
+      containers:
+        - name: ml-service
+          image: webml/ml-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5002
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+            - name: ML_AUTH_REDIS_URL
+              value: redis://redis:6379/0
+            - name: ML_AUTH_JWT_ISSUER
+              value: backend
+            - name: ML_AUTH_JWT_AUDIENCE
+              value: backend-users
+            - name: ML_AUTH_JWT_REDIS_PREFIX
+              value: jwt:keys
+            - name: ML_AUTH_ENABLE_AUTH
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 5002
+            # Model load from MLflow on cold start takes a few seconds.
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 5002
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-service
+  namespace: webml
+spec:
+  type: ClusterIP
+  selector:
+    app: ml-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 5002
+      targetPort: 5002

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: hw2
+  namespace: webml
   labels:
     app: backend
 spec:
@@ -17,7 +17,7 @@ spec:
     spec:
       initContainers:
         - name: migrate
-          image: hw2/backend:latest
+          image: webml/backend:latest
           imagePullPolicy: IfNotPresent
           command: ["alembic", "upgrade", "head"]
           env:
@@ -33,7 +33,7 @@ spec:
               value: apppassword
       containers:
         - name: backend
-          image: hw2/backend:latest
+          image: webml/backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -64,6 +64,9 @@ spec:
               value: "45"
             - name: JWT_REDIS_PREFIX
               value: jwt:keys
+            # Backend proxies /api/v1/prediction/* to the ml-service pod.
+            - name: ML_SERVICE_URL
+              value: http://ml-service:5002
           readinessProbe:
             httpGet:
               path: /health
@@ -81,7 +84,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: backend
-  namespace: hw2
+  namespace: webml
 spec:
   type: ClusterIP
   selector:

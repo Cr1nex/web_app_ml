@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -7,4 +9,7 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Web clients: HttpOnly refresh_token cookie (auto-sent), empty body.
+    # Mobile / API clients: refresh_token in body.
+    # The router enforces that one or the other is present.
+    refresh_token: Optional[str] = None

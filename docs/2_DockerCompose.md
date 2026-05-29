@@ -7,7 +7,7 @@
        │
        ▼  localhost:8080
   ┌─────────────────────────────────────────────────────┐
-  │              Docker bridge network: hw2-app-net     │
+  │              Docker bridge network: webml-app-net     │
   │                                                     │
   │  gateway (nginx)  ──/api/*──►  app (FastAPI :8000)  │
   │        │          ──/  * ──►  frontend (nginx :80)  │
@@ -47,7 +47,7 @@ Docker's embedded DNS resolves service names (`redis`, `app`, etc.) to container
 
 ### `redis` — Redis 7
 - Caches the JWKS public key set and tracks JWT refresh token revocations.
-- No host port published — reachable only inside `hw2-app-net` as `redis:6379`.
+- No host port published — reachable only inside `webml-app-net` as `redis:6379`.
 
 ### `rabbitmq` — RabbitMQ 3
 - Receives asynchronous audit-log events from the backend middleware.
@@ -88,7 +88,7 @@ Config is bind-mounted (`./nginx/default.conf`) read-only — no rebuild needed 
 ```yaml
 networks:
   app-net:
-    name: hw2-app-net
+    name: webml-app-net
     driver: bridge   # all services on one isolated bridge network
 
 volumes:

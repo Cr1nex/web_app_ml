@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: backend-default-deny-ingress
-  namespace: hw2
+  namespace: webml
 spec:
   podSelector:
     matchLabels:
@@ -14,7 +14,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: backend-allow-nginx-gateway
-  namespace: hw2
+  namespace: webml
 spec:
   podSelector:
     matchLabels:
@@ -29,3 +29,74 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+---
+# ml-service stays private. Only the backend may call its prediction API;
+# all external traffic flows backend → ml-service, never the gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-service-default-deny-ingress
+  namespace: webml
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-service
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-service-allow-backend
+  namespace: webml
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - protocol: TCP
+          port: 5002
+---
+# MLflow tracking server stays private inside the cluster — accessed by
+# ml-service (loads model) and by training jobs reaching it via
+# `kubectl port-forward svc/mlflow 5000:5000`. The port-forward path is
+# already implicitly allowed since traffic arrives via kube-proxy on the
+# node, not from another pod; this policy gates pod-to-pod ingress only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-default-deny-ingress
+  namespace: webml
+spec:
+  podSelector:
+    matchLabels:
+      app: mlflow
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-allow-ml-service
+  namespace: webml
+spec:
+  podSelector:
+    matchLabels:
+      app: mlflow
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ml-service
+      ports:
+        - protocol: TCP
+          port: 5000
