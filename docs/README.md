@@ -1,4 +1,4 @@
-# HW2 — Auth Microservice
+# webml — Full-Stack Web App + MLOps Platform
 
 A personal portfolio site backed by a production-grade(!) auth microservice: React + FastAPI + PostgreSQL + Redis + RabbitMQ + NGINX, deployed on Kubernetes (Kind) or Docker Compose.
 
