@@ -1,74 +1,83 @@
 import { useMemo, useState } from "react";
+import { apiFetch } from "../lib/api";
 
-type FeatureGroup = {
-  title: string;
-  fields: { key: string; label: string; step?: string }[];
-};
+// ── Domain values ──────────────────────────────────────────────────────────
 
-const FEATURE_GROUPS: FeatureGroup[] = [
-  {
-    title: "Time",
-    fields: [
-      { key: "year",              label: "Year",              step: "1"     },
-      { key: "month",             label: "Month (1–12)",      step: "1"     },
-      { key: "quarter",           label: "Quarter (1–4)",     step: "1"     },
-      { key: "transaction_count", label: "Transaction count", step: "1"     },
-      { key: "median_assessed_value", label: "Median assessed value", step: "1" },
-      { key: "median_sales_ratio", label: "Median sales ratio", step: "0.01" },
-    ],
-  },
-  {
-    title: "Lag features",
-    fields: [
-      { key: "median_sale_price_lag_1",  label: "Sale price · lag 1",  step: "1" },
-      { key: "median_sale_price_lag_3",  label: "Sale price · lag 3",  step: "1" },
-      { key: "median_sale_price_lag_6",  label: "Sale price · lag 6",  step: "1" },
-      { key: "median_sale_price_lag_12", label: "Sale price · lag 12", step: "1" },
-      { key: "price_pct_change_1m",  label: "Pct change · 1m",  step: "0.001" },
-      { key: "price_pct_change_3m",  label: "Pct change · 3m",  step: "0.001" },
-      { key: "price_pct_change_12m", label: "Pct change · 12m", step: "0.001" },
-    ],
-  },
-  {
-    title: "Rolling features",
-    fields: [
-      { key: "median_sale_price_rolling_mean_3",  label: "Rolling mean · 3",  step: "1" },
-      { key: "median_sale_price_rolling_std_3",   label: "Rolling std · 3",   step: "1" },
-      { key: "median_sale_price_rolling_mean_6",  label: "Rolling mean · 6",  step: "1" },
-      { key: "median_sale_price_rolling_std_6",   label: "Rolling std · 6",   step: "1" },
-      { key: "median_sale_price_rolling_mean_12", label: "Rolling mean · 12", step: "1" },
-      { key: "median_sale_price_rolling_std_12",  label: "Rolling std · 12",  step: "1" },
-    ],
-  },
+const CT_TOWNS = [
+  "Andover", "Ansonia", "Ashford", "Avon", "Barkhamsted", "Beacon Falls", "Berlin",
+  "Bethany", "Bethel", "Bethlehem", "Bloomfield", "Bolton", "Bozrah", "Branford",
+  "Bridgeport", "Bridgewater", "Bristol", "Brookfield", "Brooklyn", "Burlington",
+  "Canaan", "Canterbury", "Canton", "Chaplin", "Cheshire", "Chester", "Clinton",
+  "Colchester", "Colebrook", "Columbia", "Cornwall", "Coventry", "Cromwell",
+  "Danbury", "Darien", "Deep River", "Derby", "Durham", "East Granby", "East Haddam",
+  "East Hampton", "East Hartford", "East Haven", "East Lyme", "East Windsor",
+  "Eastford", "Easton", "Ellington", "Enfield", "Essex", "Fairfield", "Farmington",
+  "Franklin", "Glastonbury", "Goshen", "Granby", "Greenwich", "Griswold", "Groton",
+  "Guilford", "Haddam", "Hamden", "Hampton", "Hartford", "Hartland", "Harwinton",
+  "Hebron", "Kent", "Killingly", "Killingworth", "Lebanon", "Ledyard", "Lisbon",
+  "Litchfield", "Lyme", "Madison", "Manchester", "Mansfield", "Marlborough",
+  "Meriden", "Middlebury", "Middlefield", "Middletown", "Milford", "Monroe",
+  "Montville", "Morris", "Naugatuck", "New Britain", "New Canaan", "New Fairfield",
+  "New Hartford", "New Haven", "New London", "New Milford", "Newington", "Newtown",
+  "Norfolk", "North Branford", "North Canaan", "North Haven", "North Stonington",
+  "Norwalk", "Norwich", "Old Lyme", "Old Saybrook", "Orange", "Oxford", "Plainfield",
+  "Plainville", "Plymouth", "Pomfret", "Portland", "Preston", "Prospect", "Putnam",
+  "Redding", "Ridgefield", "Rocky Hill", "Roxbury", "Salem", "Salisbury", "Scotland",
+  "Seymour", "Sharon", "Shelton", "Sherman", "Simsbury", "Somers", "South Windsor",
+  "Southbury", "Southington", "Sprague", "Stafford", "Stamford", "Sterling",
+  "Stonington", "Stratford", "Suffield", "Thomaston", "Thompson", "Tolland",
+  "Torrington", "Trumbull", "Union", "Vernon", "Voluntown", "Wallingford", "Warren",
+  "Washington", "Waterbury", "Waterford", "Watertown", "West Hartford", "West Haven",
+  "Westbrook", "Weston", "Westport", "Wethersfield", "Willington", "Wilton",
+  "Winchester", "Windham", "Windsor", "Windsor Locks", "Wolcott", "Woodbridge",
+  "Woodbury", "Woodstock",
 ];
 
-const REQUIRED_FEATURES: readonly string[] = FEATURE_GROUPS.flatMap(g =>
-  g.fields.map(f => f.key)
-);
+const PROPERTY_TYPES = [
+  "Residential", "Condo", "Two Family", "Three Family", "Four Family",
+  "Single Family", "Commercial", "Vacant Land", "Apartments", "Industrial",
+  "Public Utility",
+];
 
-const EXAMPLE_VALUES: Record<string, number> = {
-  year: 2020,
-  month: 6,
-  quarter: 2,
-  transaction_count: 45,
-  median_assessed_value: 150000,
-  median_sale_price_lag_1: 250000,
-  median_sale_price_lag_3: 245000,
-  median_sale_price_lag_6: 240000,
-  median_sale_price_lag_12: 230000,
-  median_sale_price_rolling_mean_3: 248000,
-  median_sale_price_rolling_std_3: 5000,
-  median_sale_price_rolling_mean_6: 246000,
-  median_sale_price_rolling_std_6: 6000,
-  median_sale_price_rolling_mean_12: 242000,
-  median_sale_price_rolling_std_12: 7000,
-  price_pct_change_1m: 0.02,
-  price_pct_change_3m: 0.05,
-  price_pct_change_12m: 0.08,
-  median_sales_ratio: 0.92,
+const RESIDENTIAL_TYPES = [
+  "Single Family", "Condo", "Two Family", "Three Family", "Four Family", "Unknown",
+];
+
+// ── Form fields ────────────────────────────────────────────────────────────
+
+type Transaction = {
+  town: string;
+  property_type: string;
+  residential_type: string;
+  assessed_value: string;
+  list_year: string;
+  month_recorded: string;
 };
 
-type Mode = "single" | "batch";
+const EMPTY: Transaction = {
+  town: "",
+  property_type: "Residential",
+  residential_type: "Single Family",
+  assessed_value: "",
+  list_year: "",
+  month_recorded: "",
+};
+
+const EXAMPLE: Transaction = {
+  town: "Avon",
+  property_type: "Residential",
+  residential_type: "Single Family",
+  assessed_value: "217640",
+  list_year: "2020",
+  month_recorded: "9",
+};
+
+const REQUIRED_COLUMNS = [
+  "town", "property_type", "residential_type",
+  "assessed_value", "list_year", "month_recorded",
+] as const;
+
+// ── Styles ─────────────────────────────────────────────────────────────────
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40";
@@ -78,6 +87,10 @@ const BUTTON_CLASS =
 
 const GHOST_BUTTON_CLASS =
   "rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-white/30 hover:bg-white/5";
+
+// ── Page shell ─────────────────────────────────────────────────────────────
+
+type Mode = "single" | "batch";
 
 export default function PredictionPage() {
   const [mode, setMode] = useState<Mode>("single");
@@ -92,8 +105,9 @@ export default function PredictionPage() {
           📈 Property valuation
         </h2>
         <p className="mt-1 text-sm text-slate-400">
-          Predict Connecticut residential median sale prices using the trained
-          XGBoost / LightGBM model registered in MLflow.
+          Estimate what a Connecticut property would sell for on a given month —
+          including future months. Pick the town, describe the property, and
+          point at the sale date you want the estimate for.
         </p>
       </div>
 
@@ -138,23 +152,13 @@ function TabButton({
 // ── Single prediction ──────────────────────────────────────────────────────
 
 function SinglePredict() {
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(REQUIRED_FEATURES.map(k => [k, ""]))
-  );
+  const [tx, setTx] = useState<Transaction>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function update(key: string, v: string) {
-    setValues(prev => ({ ...prev, [key]: v }));
-  }
-
-  function loadExample() {
-    setValues(
-      Object.fromEntries(
-        REQUIRED_FEATURES.map(k => [k, String(EXAMPLE_VALUES[k] ?? "")])
-      )
-    );
+  function update<K extends keyof Transaction>(key: K, v: string) {
+    setTx(prev => ({ ...prev, [key]: v }));
   }
 
   async function submit(e: React.FormEvent) {
@@ -162,22 +166,39 @@ function SinglePredict() {
     setError(null);
     setResult(null);
 
-    const features: Record<string, number> = {};
-    for (const key of REQUIRED_FEATURES) {
-      const raw = values[key];
-      const n = Number(raw);
-      if (raw === "" || Number.isNaN(n)) {
-        setError(`Missing or invalid value for "${key}".`);
-        return;
-      }
-      features[key] = n;
+    if (!tx.town || !tx.property_type || !tx.residential_type) {
+      setError("Town, property type and residential type are required.");
+      return;
     }
+    const assessed = Number(tx.assessed_value);
+    const year = Number(tx.list_year);
+    const month = Number(tx.month_recorded);
+    if (!Number.isFinite(assessed) || assessed <= 0) {
+      setError("Assessed value must be a positive number.");
+      return;
+    }
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+      setError("List year looks invalid.");
+      return;
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      setError("Month must be 1–12.");
+      return;
+    }
+
+    const features = {
+      town: tx.town,
+      property_type: tx.property_type,
+      residential_type: tx.residential_type,
+      assessed_value: assessed,
+      list_year: year,
+      month_recorded: month,
+    };
 
     setLoading(true);
     try {
-      const r = await fetch("/api/v1/prediction/predict", {
+      const r = await apiFetch("/api/v1/prediction/predict", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ features }),
       });
@@ -196,42 +217,99 @@ function SinglePredict() {
 
   return (
     <form onSubmit={submit} className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-3">
-        {FEATURE_GROUPS.map(group => (
-          <div
-            key={group.title}
-            className="rounded-2xl border border-white/10 bg-white/5 p-5"
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Town">
+          <input
+            list="ct-towns"
+            value={tx.town}
+            onChange={e => update("town", e.target.value)}
+            className={INPUT_CLASS}
+            placeholder="e.g. Avon"
+          />
+          <datalist id="ct-towns">
+            {CT_TOWNS.map(t => <option key={t} value={t} />)}
+          </datalist>
+        </Field>
+
+        <Field label="Property type">
+          <select
+            value={tx.property_type}
+            onChange={e => update("property_type", e.target.value)}
+            className={INPUT_CLASS}
           >
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-              {group.title}
-            </h3>
-            <div className="space-y-3">
-              {group.fields.map(f => (
-                <label key={f.key} className="block">
-                  <span className="mb-1 block text-xs text-slate-400">
-                    {f.label}
-                  </span>
-                  <input
-                    type="number"
-                    step={f.step ?? "any"}
-                    value={values[f.key]}
-                    onChange={e => update(f.key, e.target.value)}
-                    className={INPUT_CLASS}
-                    placeholder="0"
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
+            {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Residential type">
+          <select
+            value={tx.residential_type}
+            onChange={e => update("residential_type", e.target.value)}
+            className={INPUT_CLASS}
+          >
+            {RESIDENTIAL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+
+        <Field
+          label="Assessed value ($)"
+          hint="The town tax assessor's official valuation of the property. In CT this is usually 70% of fair market value and is printed on the property tax bill / town's online assessor portal."
+        >
+          <input
+            type="number"
+            step="1000"
+            min="0"
+            value={tx.assessed_value}
+            onChange={e => update("assessed_value", e.target.value)}
+            className={INPUT_CLASS}
+            placeholder="180000"
+          />
+        </Field>
+
+        <Field label="Sale year" hint="Year you want the estimate for. Future years are allowed.">
+          <input
+            type="number"
+            step="1"
+            min="1900"
+            max="2100"
+            value={tx.list_year}
+            onChange={e => update("list_year", e.target.value)}
+            className={INPUT_CLASS}
+            placeholder="2026"
+          />
+        </Field>
+
+        <Field label="Sale month (1–12)" hint="Month you want the estimate for.">
+          <input
+            type="number"
+            step="1"
+            min="1"
+            max="12"
+            value={tx.month_recorded}
+            onChange={e => update("month_recorded", e.target.value)}
+            className={INPUT_CLASS}
+            placeholder="6"
+          />
+        </Field>
       </div>
 
       <div className="flex items-center gap-3">
         <button type="submit" className={BUTTON_CLASS} disabled={loading}>
-          {loading ? "Predicting…" : "Predict"}
+          {loading ? "Predicting…" : "Predict price"}
         </button>
-        <button type="button" onClick={loadExample} className={GHOST_BUTTON_CLASS}>
+        <button
+          type="button"
+          onClick={() => setTx(EXAMPLE)}
+          className={GHOST_BUTTON_CLASS}
+        >
           Load example
+        </button>
+        <button
+          type="button"
+          onClick={() => { setTx(EMPTY); setResult(null); setError(null); }}
+          className={GHOST_BUTTON_CLASS}
+        >
+          Reset
         </button>
       </div>
 
@@ -244,7 +322,7 @@ function SinglePredict() {
       {result !== null && (
         <div className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4">
           <p className="text-xs uppercase tracking-wider text-cyan-400">
-            Predicted median sale price
+            Predicted sale price
           </p>
           <p className="mt-1 text-3xl font-bold text-white">
             ${result.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -255,55 +333,78 @@ function SinglePredict() {
   );
 }
 
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-slate-400">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11px] leading-snug text-slate-500">{hint}</span>}
+    </label>
+  );
+}
+
 // ── Batch prediction ───────────────────────────────────────────────────────
 
-type ParsedCsv = {
-  headers: string[];
-  rows: Record<string, number>[];
+type ParsedRow = {
+  town: string;
+  property_type: string;
+  residential_type: string;
+  assessed_value: number;
+  list_year: number;
+  month_recorded: number;
 };
 
-function parseCsv(text: string): ParsedCsv {
-  const lines = text
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(l => l.length > 0);
+function parseCsv(text: string): ParsedRow[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length < 2) {
     throw new Error("CSV must have a header row and at least one data row.");
   }
   const headers = lines[0].split(",").map(h => h.trim());
 
-  const missing = REQUIRED_FEATURES.filter(k => !headers.includes(k));
+  const missing = REQUIRED_COLUMNS.filter(k => !headers.includes(k));
   if (missing.length > 0) {
     throw new Error(`CSV is missing required columns: ${missing.join(", ")}`);
   }
 
-  const rows: Record<string, number>[] = [];
+  const idx: Record<string, number> = {};
+  REQUIRED_COLUMNS.forEach(c => { idx[c] = headers.indexOf(c); });
+
+  const rows: ParsedRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split(",").map(c => c.trim());
-    if (cells.length !== headers.length) {
-      throw new Error(`Row ${i + 1} has ${cells.length} cells, expected ${headers.length}.`);
+    const assessed = Number(cells[idx.assessed_value]);
+    const year = Number(cells[idx.list_year]);
+    const month = Number(cells[idx.month_recorded]);
+    if (!Number.isFinite(assessed) || !Number.isFinite(year) || !Number.isFinite(month)) {
+      throw new Error(`Row ${i + 1}: assessed_value / list_year / month_recorded must be numeric.`);
     }
-    const row: Record<string, number> = {};
-    for (let j = 0; j < headers.length; j++) {
-      if (!REQUIRED_FEATURES.includes(headers[j])) continue;
-      const n = Number(cells[j]);
-      if (Number.isNaN(n)) {
-        throw new Error(`Row ${i + 1}, column "${headers[j]}" is not a number: ${cells[j]}`);
-      }
-      row[headers[j]] = n;
-    }
-    rows.push(row);
+    rows.push({
+      town: cells[idx.town],
+      property_type: cells[idx.property_type],
+      residential_type: cells[idx.residential_type],
+      assessed_value: assessed,
+      list_year: year,
+      month_recorded: month,
+    });
   }
-  return { headers, rows };
+  return rows;
 }
 
 function BatchPredict() {
-  const [parsed, setParsed] = useState<ParsedCsv | null>(null);
+  const [rows, setRows] = useState<ParsedRow[] | null>(null);
   const [predictions, setPredictions] = useState<number[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const requiredColumns = useMemo(() => REQUIRED_FEATURES.join(", "), []);
+  const requiredColumns = useMemo(() => REQUIRED_COLUMNS.join(", "), []);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -315,26 +416,25 @@ function BatchPredict() {
     reader.onload = () => {
       try {
         const text = String(reader.result ?? "");
-        setParsed(parseCsv(text));
+        setRows(parseCsv(text));
       } catch (err: any) {
         setError(err.message ?? "Failed to parse CSV.");
-        setParsed(null);
+        setRows(null);
       }
     };
     reader.readAsText(file);
   }
 
   async function submit() {
-    if (!parsed) return;
+    if (!rows) return;
     setLoading(true);
     setError(null);
     setPredictions(null);
     try {
-      const r = await fetch("/api/v1/prediction/predict/batch", {
+      const r = await apiFetch("/api/v1/prediction/predict/batch", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instances: parsed.rows }),
+        body: JSON.stringify({ instances: rows }),
       });
       if (!r.ok) {
         const body = await r.text();
@@ -353,7 +453,7 @@ function BatchPredict() {
     <div className="space-y-6">
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <p className="text-sm text-slate-300">
-          Upload a CSV with one row per property. The header row must include
+          Upload a CSV with one row per transaction. The header row must include
           these columns (extra columns are ignored):
         </p>
         <p className="mt-2 break-all rounded-lg bg-slate-950/60 px-3 py-2 font-mono text-xs text-cyan-300">
@@ -370,16 +470,16 @@ function BatchPredict() {
           <button
             type="button"
             onClick={submit}
-            disabled={!parsed || loading}
+            disabled={!rows || loading}
             className={BUTTON_CLASS}
           >
             {loading ? "Predicting…" : "Run batch"}
           </button>
         </div>
 
-        {parsed && (
+        {rows && (
           <p className="mt-3 text-xs text-slate-400">
-            Parsed {parsed.rows.length} rows from CSV.
+            Parsed {rows.length} rows from CSV.
           </p>
         )}
       </div>
@@ -390,14 +490,15 @@ function BatchPredict() {
         </div>
       )}
 
-      {predictions && parsed && (
+      {predictions && rows && (
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-900/80 text-xs uppercase tracking-wider text-cyan-400">
               <tr>
                 <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Year</th>
-                <th className="px-4 py-3">Month</th>
+                <th className="px-4 py-3">Town</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3 text-right">Assessed</th>
                 <th className="px-4 py-3 text-right">Predicted price</th>
               </tr>
             </thead>
@@ -405,8 +506,11 @@ function BatchPredict() {
               {predictions.map((p, i) => (
                 <tr key={i} className="text-slate-200">
                   <td className="px-4 py-2 text-slate-500">{i + 1}</td>
-                  <td className="px-4 py-2">{parsed.rows[i]?.year ?? "—"}</td>
-                  <td className="px-4 py-2">{parsed.rows[i]?.month ?? "—"}</td>
+                  <td className="px-4 py-2">{rows[i]?.town ?? "—"}</td>
+                  <td className="px-4 py-2">{rows[i]?.residential_type ?? "—"}</td>
+                  <td className="px-4 py-2 text-right text-slate-300">
+                    ${rows[i]?.assessed_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
                   <td className="px-4 py-2 text-right font-semibold text-white">
                     ${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>

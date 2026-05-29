@@ -42,8 +42,11 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
       // We don't touch localStorage for security — the readable `username`
       // cookie was also set by the server and is used by the frontend.
       const auth = data as AuthResponse;
-      void auth; // used for type-narrowing only; no manual storage needed
+      void auth;
 
+      // Skip the redundant /refresh bootstrap on the very next mount —
+      // the access_token is brand new.
+      sessionStorage.setItem("session:fresh", "1");
       navigate("/app");
     } catch (err) {
       setError(err instanceof Error ? err.message : "request_failed");

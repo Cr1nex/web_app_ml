@@ -1,15 +1,16 @@
 """
-API v1 route handlers for property valuation predictions.
+API v1 route handlers for the property valuation API.
 
 Endpoints:
     GET  /api/v1/health         — Health check
-    POST /api/v1/predict        — Single prediction
+    POST /api/v1/predict        — Single-transaction prediction
     POST /api/v1/predict/batch  — Batch predictions
     GET  /api/v1/model-info     — Model metadata
     POST /api/v1/reload         — Hot-reload model from MLflow Registry
 """
 
 import logging
+from typing import List
 from uuid import UUID
 
 import pandas as pd
@@ -19,19 +20,36 @@ import src.api.v1.app as app_module
 from src.api.v1.deps import get_current_user_id
 from src.config import MODEL_NAME
 from src.configs.models.api_models import (
-    PredictRequest,
     BatchPredictRequest,
-    PredictResponse,
     HealthResponse,
     ModelInfoResponse,
+    PredictRequest,
+    PredictResponse,
+    TransactionFeatures,
 )
+from src.data.transaction_features import FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# Route Handlers
+def _to_dataframe(transactions: List[TransactionFeatures]) -> pd.DataFrame:
+    """Convert request models into the column order + dtypes the model expects.
+
+    The pyfunc wrapper (CategoricalTreeModel) re-applies `category` dtype on
+    its side, so we send plain strings here to match the logged signature.
+    Integer columns are cast to int32 because MLflow's `integer` schema type
+    means int32 specifically, and pandas otherwise builds int64 from JSON
+    which the schema enforcer refuses to downcast implicitly.
+    """
+    df = pd.DataFrame([t.model_dump() for t in transactions])
+    df = df[FEATURE_COLUMNS]
+    df["list_year"] = df["list_year"].astype("int32")
+    df["month_recorded"] = df["month_recorded"].astype("int32")
+    df["assessed_value"] = df["assessed_value"].astype("float64")
+    return df
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health():
@@ -44,18 +62,14 @@ async def predict(
     request: PredictRequest,
     user_id: UUID = Depends(get_current_user_id),
 ):
-    """Predict property valuation from a single set of features."""
+    """Predict the sale price of a single transaction."""
     if app_module.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
-        input_df = pd.DataFrame([request.features])
+        input_df = _to_dataframe([request.features])
         predictions = app_module.model.predict(input_df)
-
-        return PredictResponse(
-            predictions=predictions.tolist(),
-            count=len(predictions),
-        )
+        return PredictResponse(predictions=predictions.tolist(), count=len(predictions))
     except Exception as e:
         logger.error(f"Prediction error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -66,18 +80,14 @@ async def predict_batch(
     request: BatchPredictRequest,
     user_id: UUID = Depends(get_current_user_id),
 ):
-    """Batch predict property valuations from a list of feature dicts."""
+    """Predict sale prices for a batch of transactions."""
     if app_module.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
-        input_df = pd.DataFrame(request.instances)
+        input_df = _to_dataframe(request.instances)
         predictions = app_module.model.predict(input_df)
-
-        return PredictResponse(
-            predictions=predictions.tolist(),
-            count=len(predictions),
-        )
+        return PredictResponse(predictions=predictions.tolist(), count=len(predictions))
     except Exception as e:
         logger.error(f"Batch prediction error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

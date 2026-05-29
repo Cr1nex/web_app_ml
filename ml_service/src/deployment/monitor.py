@@ -32,6 +32,7 @@ from src.config import (
     MAE_ALERT_MULTIPLIER,
     DRIFT_SIGNIFICANCE_LEVEL,
 )
+from src.data.transaction_features import DATE as DATE_COL_NAME
 from src.services.model import evaluate_model
 from src.services.train import MONTHLY_TARGET, get_feature_columns
 
@@ -42,7 +43,8 @@ logger = logging.getLogger(__name__)
 def load_test_data() -> pd.DataFrame:
     """Load test data (post-validation period) for monitoring simulation."""
     df = pd.read_parquet(PROCESSED_FEATURES_FILE)
-    test_df = df[df["date"] > VALIDATION_END_DATE].reset_index(drop=True)
+    df[DATE_COL_NAME] = pd.to_datetime(df[DATE_COL_NAME])
+    test_df = df[df[DATE_COL_NAME] > VALIDATION_END_DATE].reset_index(drop=True)
     logger.info(f"Loaded {len(test_df)} test records for monitoring")
     return test_df
 
@@ -125,7 +127,8 @@ def run_monitoring(
 
     # Load reference (training) data and test data
     full_df = pd.read_parquet(PROCESSED_FEATURES_FILE)
-    reference_df = full_df[full_df["date"] <= VALIDATION_END_DATE]
+    full_df[DATE_COL_NAME] = pd.to_datetime(full_df[DATE_COL_NAME])
+    reference_df = full_df[full_df[DATE_COL_NAME] <= VALIDATION_END_DATE]
     test_df = load_test_data()
     feature_cols = get_feature_columns(full_df)
 

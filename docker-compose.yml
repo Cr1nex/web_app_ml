@@ -10,6 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+      # Runs once on first volume init: creates the `mlflow` database alongside `appdb`.
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - app-net
     healthcheck:
@@ -67,9 +69,20 @@ services:
     container_name: hw2-mlflow
     ports:
       - "5000:5000"
+    environment:
+      # Backend store lives in the existing postgres container (separate `mlflow` DB).
+      # Artifacts still live on the local volume; clients reach them via the HTTP proxy.
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://appuser:apppassword@db:5432/mlflow
+      MLFLOW_ARTIFACTS_DESTINATION: /app/artifacts
+      # MLflow 3.x DNS-rebinding protection: matcher is exact-string OR fnmatch
+      # glob, and the Host header includes the port (e.g. "mlflow:5000").
+      # Use ":*" to cover any port, matching MLflow's own default for localhost.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow,mlflow:*,localhost,localhost:*,127.0.0.1,127.0.0.1:*"
     volumes:
-      - mlflow-data:/app/mlflow
       - mlflow-artifacts:/app/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - app-net
     healthcheck:
@@ -126,7 +139,6 @@ services:
 
 volumes:
   db-data:
-  mlflow-data:
   mlflow-artifacts:
 
 networks:

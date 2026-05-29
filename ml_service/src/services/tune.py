@@ -32,8 +32,9 @@ from src.config import (
     TRAIN_END_DATE,
     VALIDATION_END_DATE,
 )
+from src.data.transaction_features import CATEGORICAL_FEATURES, TARGET as MONTHLY_TARGET
 from src.services.model import get_model, evaluate_model
-from src.services.train import load_features, get_feature_columns, chronological_split, MONTHLY_TARGET
+from src.services.train import load_features, get_feature_columns, chronological_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s — %(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -97,6 +98,9 @@ def run_tuning(model_type: str = "xgboost", max_evals: int = 20):
         clean_params = {k: v for k, v in params.items()}
         clean_params["random_state"] = 42
         clean_params["n_jobs"] = -1
+        if model_type == "xgboost":
+            clean_params["enable_categorical"] = True
+            clean_params["tree_method"] = "hist"
         if model_type == "lightgbm":
             clean_params["verbose"] = -1
 
@@ -105,7 +109,14 @@ def run_tuning(model_type: str = "xgboost", max_evals: int = 20):
             mlflow.log_params({k: str(v) for k, v in clean_params.items()})
 
             model = get_model(model_type, clean_params)
-            model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+            if model_type == "lightgbm":
+                model.fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    categorical_feature=CATEGORICAL_FEATURES,
+                )
+            else:
+                model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
             # Validation metrics
             val_pred = model.predict(X_val)

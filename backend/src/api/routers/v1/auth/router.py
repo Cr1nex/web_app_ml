@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, Request, Response
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from core.db.session import get_db
 from core.rate_limit import limiter
 from core.security.jwks import get_cached_jwks
 from core.utils.cookies import clear_auth_cookies, set_auth_cookies
-from core.utils.deps import get_redis
+from core.utils.deps import get_current_user_id, get_redis
 from models.token import TokenPair
 from models.user import LoginResponse
 from services.user_service import UserService
@@ -54,8 +56,15 @@ def refresh(
     db=Depends(get_db),
     redis_client=Depends(get_redis),
 ):
-    # Cookie (web) takes priority; body (mobile) is the fallback
+    # Cookie (web) takes priority; body (mobile) is the fallback.
+    # Schema accepts an empty body so cookie-only web clients pass Pydantic;
+    # we enforce "must have one" here at the application layer.
     refresh_tok = request.cookies.get("refresh_token") or payload.refresh_token
+    if not refresh_tok:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing_refresh_token",
+        )
     token_service = TokenService(db, redis_client)
     new_pair = token_service.rotate_refresh_token(refresh_tok)
     # Rotate the token cookies; username cookie stays valid
@@ -69,3 +78,17 @@ def refresh(
 def logout(response: Response):
     clear_auth_cookies(response)
     return {"logged_out": True}
+
+
+@router.get("/check")
+@limiter.limit("120/minute")
+def check_session(
+    request: Request,
+    user_id: UUID = Depends(get_current_user_id),
+):
+    """Returns 200 if the access_token cookie is still valid, 401 otherwise.
+
+    Cheap probe the frontend uses on page reload before deciding whether
+    to call /refresh — no token rotation, no DB write.
+    """
+    return {"user_id": str(user_id)}
